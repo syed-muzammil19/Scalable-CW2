@@ -1,0 +1,56 @@
+# ------------------------
+# Python
+# ------------------------
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+*.db
+*.log
+
+# Virtual environments
+venv/
+antenv/
+.env
+
+# ------------------------
+# Azure / VS Code
+# ------------------------
+.vscode/
+*.code-workspace
+*.azure
+
+# Azure Functions / App Service
+__oryx_packages__/
+.local.settings.json
+
+# ------------------------
+# IDEs / Editors
+# ------------------------
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+.DS_Store
+
+# ------------------------
+# Distribution / Packaging
+# ------------------------
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+*.whl
+
+# ------------------------
+# Jupyter Notebooks
+# ------------------------
+.ipynb_checkpoints/
+
+# ------------------------
+# Misc
+# ------------------------
+*.bak
+*.tmp

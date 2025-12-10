@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+azure-storage-blob
+pyodbc
+pydantic
+python-multipart
+moviepy
+imageio
+imageio-ffmpeg
+numpy
+
+

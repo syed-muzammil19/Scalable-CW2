@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Video Upload App</title>
+<style>
+  #commentsList p { margin: 5px 0; }
+</style>
+</head>
+<body>
+<h1>Video Upload App</h1>
+
+<section>
+  <h2>Upload Video</h2>
+  <form id="uploadForm" enctype="multipart/form-data">
+    <input type="file" id="videoFile" name="file" accept="video/mp4" required />
+    <button type="submit">Upload</button>
+  </form>
+</section>
+
+<section>
+  <h2>Uploaded Video</h2>
+  <video id="videoPlayer" width="640" controls autoplay></video>
+  <p id="videoName"></p>
+</section>
+
+<section>
+  <h2>Comments</h2>
+  <input type="text" id="commentText" placeholder="Enter comment" />
+  <button id="addCommentBtn">Add Comment</button>
+  <div id="commentsList"><p>No comments yet</p></div>
+</section>
+
+<script>
+let uploadedVideoName = '';
+
+document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fileEl = document.getElementById('videoFile');
+  if (!fileEl.files.length) { alert('Select a video'); return; }
+  const f = fileEl.files[0];
+  const fd = new FormData();
+  fd.append('file', f);
+
+  try {
+    const res = await fetch('/upload-video/', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.error) { alert('Upload failed: ' + JSON.stringify(data)); return; }
+
+    uploadedVideoName = data.video_name;
+    document.getElementById('videoPlayer').src = data.video_url;
+    document.getElementById('videoName').textContent = `Filename: ${uploadedVideoName}`;
+    loadComments();
+  } catch (err) {
+    alert('Error: ' + err);
+  }
+});
+
+document.getElementById('addCommentBtn').addEventListener('click', async () => {
+  const text = document.getElementById('commentText').value.trim();
+  if (!text) return alert('Enter a comment');
+  if (!uploadedVideoName) return alert('Upload a video first');
+
+  const fd = new FormData();
+  fd.append('video_name', uploadedVideoName);
+  fd.append('comment_text', text);
+
+  try {
+    const res = await fetch('/add-comment/', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.status) {
+      document.getElementById('commentText').value = '';
+      loadComments();
+    } else {
+      alert('Error adding comment: ' + JSON.stringify(data));
+    }
+  } catch (err) {
+    alert('Error: ' + err);
+  }
+});
+
+async function loadComments() {
+  if (!uploadedVideoName) return;
+  try {
+    const res = await fetch(`/get-comments/?video_name=${encodeURIComponent(uploadedVideoName)}`);
+    const data = await res.json();
+    const list = document.getElementById('commentsList');
+    list.innerHTML = '';
+    if (data.comments && data.comments.length) {
+      data.comments.forEach(c => {
+        const emoji = c.sentiment === 'positive' ? '😃' : c.sentiment === 'negative' ? '😠' : '😐';
+        const p = document.createElement('p');
+        p.textContent = `${c.created_at || ''} - ${c.text || ''} ${emoji}`;
+        list.prepend(p);
+      });
+    } else {
+      list.innerHTML = '<p>No comments yet</p>';
+    }
+  } catch (err) {
+    console.error("Failed to load comments:", err);
+  }
+}
+</script>
+</body>
+</html>
