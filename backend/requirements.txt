@@ -8,5 +8,7 @@ moviepy
 imageio
 imageio-ffmpeg
 numpy
+python-dotenv
+azure-ai-textanalytics
 
 

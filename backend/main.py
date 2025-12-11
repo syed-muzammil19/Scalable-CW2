@@ -6,9 +6,13 @@ from azure.ai.textanalytics import TextAnalyticsClient
 from azure.core.credentials import AzureKeyCredential
 from datetime import datetime, timedelta
 import pyodbc
+from dotenv import load_dotenv
 import os
 
 app = FastAPI()
+
+# Load environment variables
+load_dotenv()
 
 # ------------------- CORS -------------------
 app.add_middleware(
@@ -24,7 +28,8 @@ app.mount("/frontend", StaticFiles(directory="frontend", html=True), name="front
 
 # ------------------- Azure Blob -------------------
 AZURE_CONNECTION_STRING = os.getenv("AZURE_CONNECTION_STRING")
-AZURE_STORAGE_ACCOUNT_KEY = os.getenv("AZURE_STORAGE_ACCOUNT_KEY")  # for SAS token if needed
+AZURE_STORAGE_ACCOUNT_NAME = os.getenv("AZURE_STORAGE_ACCOUNT_NAME")
+AZURE_STORAGE_ACCOUNT_KEY = os.getenv("AZURE_STORAGE_ACCOUNT_KEY")
 CONTAINER_NAME = "videocontainer"
 
 blob_service_client = BlobServiceClient.from_connection_string(AZURE_CONNECTION_STRING)
@@ -37,23 +42,26 @@ except:
 # ------------------- Azure SQL -------------------
 SQL_CONNECTION_STRING = (
     f"Driver={{ODBC Driver 17 for SQL Server}};"
-    f"Server=tcp:{os.getenv('AZURE_SQL_SERVER')},1433;"
+    f"Server={os.getenv('AZURE_SQL_SERVER')};"
     f"Database={os.getenv('AZURE_SQL_DATABASE')};"
     f"Uid={os.getenv('AZURE_SQL_USERNAME')};"
     f"Pwd={os.getenv('AZURE_SQL_PASSWORD')};"
     "Encrypt=yes;"
-    "TrustServerCertificate=no;"
+    "TrustServerCertificate=yes;"
     "Connection Timeout=30;"
 )
 
-try:
-    conn = pyodbc.connect(SQL_CONNECTION_STRING)
-    cursor = conn.cursor()
-    print("Connected to Azure SQL Database successfully.")
-except Exception as e:
-    print(f"Warning: Could not connect to SQL Database. Comments disabled. {e}")
-    conn = None
-    cursor = None
+def create_db_connection():
+    try:
+        conn = pyodbc.connect(SQL_CONNECTION_STRING)
+        cursor = conn.cursor()
+        print("Connected to Azure SQL Database successfully.")
+        return conn, cursor
+    except Exception as e:
+        print(f"Warning: Could not connect to SQL Database. Comments disabled. {e}")
+        return None, None
+
+conn, cursor = create_db_connection()
 
 # ------------------- Azure Text Analytics -------------------
 AZURE_TEXT_ANALYTICS_KEY = os.getenv("AZURE_TEXT_ANALYTICS_KEY")
@@ -86,7 +94,6 @@ def analyze_sentiment(comment: str):
 @app.post("/upload-video/")
 async def upload_video(file: UploadFile):
     try:
-        # Force the file to .mp4 if needed
         filename = file.filename
         if not filename.lower().endswith(".mp4"):
             filename = f"{filename.rsplit('.', 1)[0]}.mp4"
@@ -94,7 +101,6 @@ async def upload_video(file: UploadFile):
         blob_client = container_client.get_blob_client(filename)
         data = await file.read()
 
-        # Upload with fixed Content-Type for browser playback
         blob_client.upload_blob(
             data,
             overwrite=True,
@@ -104,9 +110,8 @@ async def upload_video(file: UploadFile):
             )
         )
 
-        # Generate SAS token
         sas_token = generate_blob_sas(
-            account_name=os.getenv("AZURE_STORAGE_ACCOUNT_NAME"),
+            account_name=AZURE_STORAGE_ACCOUNT_NAME,
             container_name=CONTAINER_NAME,
             blob_name=filename,
             account_key=AZURE_STORAGE_ACCOUNT_KEY,
@@ -122,17 +127,20 @@ async def upload_video(file: UploadFile):
 
 @app.post("/add-comment/")
 def add_comment(video_name: str = Form(...), comment_text: str = Form(...)):
+    global conn, cursor
     if cursor is None:
-        return {"error": "SQL Database not connected."}
-    try:
-        # Perform sentiment analysis
-        response = text_analytics_client.analyze_sentiment([comment_text])[0]
-        sentiment = response.sentiment
-        pos = response.confidence_scores.positive
-        neu = response.confidence_scores.neutral
-        neg = response.confidence_scores.negative
+        # Try to reconnect if possible
+        conn, cursor = create_db_connection()
+        if cursor is None:
+            return {"error": "SQL Database not connected."}
 
-        # Insert comment into SQL
+    try:
+        sentiment_data = analyze_sentiment(comment_text)
+        sentiment = sentiment_data["sentiment"]
+        pos = sentiment_data["positive"]
+        neu = sentiment_data["neutral"]
+        neg = sentiment_data["negative"]
+
         cursor.execute("""
             INSERT INTO Comments (VideoName, CommentText, Sentiment, PositiveScore, NeutralScore, NegativeScore, CreatedAt)
             VALUES (?, ?, ?, ?, ?, ?, GETDATE())
@@ -146,8 +154,12 @@ def add_comment(video_name: str = Form(...), comment_text: str = Form(...)):
 
 @app.get("/get-comments/")
 def get_comments(video_name: str):
+    global conn, cursor
     if cursor is None:
-        return {"comments": [], "error": "SQL Database not connected."}
+        conn, cursor = create_db_connection()
+        if cursor is None:
+            return {"comments": [], "error": "SQL Database not connected."}
+
     try:
         cursor.execute("""
             SELECT CommentText, Sentiment, PositiveScore, NeutralScore, NegativeScore, CreatedAt
