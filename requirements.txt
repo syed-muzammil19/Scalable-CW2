@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+azure-storage-blob
+pyodbc
+pydantic
+python-multipart
+moviepy
+imageio
+imageio-ffmpeg
+numpy
+python-dotenv
+azure-ai-textanalytics
+
+
